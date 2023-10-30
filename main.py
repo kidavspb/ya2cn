@@ -11,21 +11,19 @@ with open('Review.csv', 'r') as file:
         sentiments.append(1 if row[0] == 'Positive' else 0)
         reviews.append(row[1])
 
-# # Display a few random reviews
-# for i in range(5):
-#     index = random.randint(0, len(reviews) - 1)
-#     print(f"Review: {reviews[index]}")
-#     print(f"Sentiment: {'Positive' if sentiments[index] == 1 else 'Negative'}")
-#     print("-----")
-
-
-
+# Display a few random reviews
+for i in range(5):
+    index = random.randint(0, len(reviews) - 1)
+    print(f"Review: {reviews[index]}")
+    print(f"Sentiment: {'Positive' if sentiments[index] == 1 else 'Negative'}")
+    print("-----")
 
 
 from sklearn.model_selection import train_test_split
 from torchtext.data.utils import get_tokenizer
-from collections import Counter
-from torchtext.vocab import Vocab
+from collections import Counter, OrderedDict
+from torchtext.vocab import vocab
+# from torchtext.vocab import build_vocab_from_iterator
 import torch
 
 # Tokenization
@@ -36,8 +34,9 @@ tokenized_reviews = [tokenizer(review) for review in reviews]
 counter = Counter()
 for review in tokenized_reviews:
     counter.update(review)
-vocab = Vocab(counter)
-print(vocab.stoi)
+sorted_by_freq_tuples = sorted(counter.items(), key=lambda x: x[1], reverse=True)
+ordered_dict = OrderedDict(sorted_by_freq_tuples)
+vocab = vocab(ordered_dict)
 
 # Numericalize, pad, and split the data
 def numericalize(tokenized_review, vocab):
@@ -45,16 +44,11 @@ def numericalize(tokenized_review, vocab):
 
 
 numericalized_reviews = [numericalize(review, vocab) for review in tokenized_reviews]
-padded_reviews = torch.nn.utils.rnn.pad_sequence([torch.tensor(review) for review in numericalized_reviews],
-                                                 batch_first=True)
+padded_reviews = torch.nn.utils.rnn.pad_sequence([torch.tensor(review) for review in numericalized_reviews], batch_first=True)
 
 # Split the data
 train_reviews, val_reviews, train_sentiments, val_sentiments = train_test_split(padded_reviews, sentiments,
                                                                                 test_size=0.2, random_state=42)
-
-
-
-
 
 import torch.nn as nn
 
@@ -73,9 +67,6 @@ class SentimentModel(nn.Module):
         return output
 
 
-
-
-
 # Hyperparameters
 VOCAB_SIZE = len(vocab)
 EMBEDDING_DIM = 100
@@ -83,17 +74,14 @@ HIDDEN_DIM = 256
 OUTPUT_DIM = 1
 LEARNING_RATE = 0.001
 
-assert all([all([idx < VOCAB_SIZE for idx in review]) for review in numericalized_reviews]), "Found an out-of-vocab index."
+assert all(
+    [all([idx < VOCAB_SIZE for idx in review]) for review in numericalized_reviews]), "Found an out-of-vocab index."
 # Initialize the model
 model = SentimentModel(VOCAB_SIZE, EMBEDDING_DIM, HIDDEN_DIM, OUTPUT_DIM)
 
 # Define the loss function and the optimizer
 criterion = nn.BCEWithLogitsLoss()  # Binary cross-entropy with logits
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-
-
-
-
 
 # Training parameters
 EPOCHS = 5
@@ -125,10 +113,6 @@ for epoch in range(EPOCHS):
     # Print loss for every epoch
     print(f"Epoch {epoch + 1}/{EPOCHS}, Loss: {loss.item():.4f}")
 
-
-
-
-
 with torch.no_grad():
     val_outputs = model(val_reviews_tensor)
     val_loss = criterion(val_outputs, val_sentiments_tensor)
@@ -137,3 +121,4 @@ with torch.no_grad():
 
 print(f"Validation Loss: {val_loss:.4f}")
 print(f"Validation Accuracy: {accuracy:.4f}")
+
