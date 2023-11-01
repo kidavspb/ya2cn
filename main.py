@@ -1,124 +1,79 @@
+# Importing the necessary libraries from scikit-learn
 import csv
-import random
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
 
+# Sample data: list of reviews and their corresponding labels (Negative/Positive)
 reviews = []
-sentiments = []
+labels = []
 
 with open('Review.csv', 'r') as file:
     reader = csv.reader(file)
     next(reader)  # Skip the header
     for row in reader:
-        sentiments.append(1 if row[0] == 'Positive' else 0)
         reviews.append(row[1])
+        labels.append(row[0])
 
-# Display a few random reviews
-for i in range(5):
-    index = random.randint(0, len(reviews) - 1)
-    print(f"Review: {reviews[index]}")
-    print(f"Sentiment: {'Positive' if sentiments[index] == 1 else 'Negative'}")
-    print("-----")
+# Splitting the dataset into training and testing sets
+# 80% of data will be used for training, and 20% will be used for testing.
+X_train, X_test, y_train, y_test = train_test_split(reviews, labels, test_size=0.2)
 
+# Initializing the TF-IDF Vectorizer with English stop words
+# Stop words are common words that do not contribute to the meaning of a sentence and are often removed to reduce noise.
+vectorizer = TfidfVectorizer(stop_words='english')
 
-from sklearn.model_selection import train_test_split
-from torchtext.data.utils import get_tokenizer
-from collections import Counter, OrderedDict
-from torchtext.vocab import vocab
-# from torchtext.vocab import build_vocab_from_iterator
-import torch
+# Transforming the training data: learning the vocabulary and converting text to vectors
+X_train_vec = vectorizer.fit_transform(X_train)
 
-# Tokenization
-tokenizer = get_tokenizer('basic_english')
-tokenized_reviews = [tokenizer(review) for review in reviews]
+# Transforming the testing data: using the vocabulary from training data and converting text to vectors
+X_test_vec = vectorizer.transform(X_test)
 
-# Build vocabulary
-counter = Counter()
-for review in tokenized_reviews:
-    counter.update(review)
-sorted_by_freq_tuples = sorted(counter.items(), key=lambda x: x[1], reverse=True)
-ordered_dict = OrderedDict(sorted_by_freq_tuples)
-vocab = vocab(ordered_dict)
+# Initializing the Logistic Regression classifier
+clf = LogisticRegression()
 
-# Numericalize, pad, and split the data
-def numericalize(tokenized_review, vocab):
-    return [vocab[token] for token in tokenized_review]
+# Training the classifier using the vectorized training data
+clf.fit(X_train_vec, y_train)
+
+# Predicting the categories for the testing set
+y_pred = clf.predict(X_test_vec)
+
+# Printing a detailed classification report showing the performance metrics of the classifier
+print(classification_report(y_test, y_pred))
 
 
-numericalized_reviews = [numericalize(review, vocab) for review in tokenized_reviews]
-padded_reviews = torch.nn.utils.rnn.pad_sequence([torch.tensor(review) for review in numericalized_reviews], batch_first=True)
+import itertools
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.metrics import confusion_matrix
 
-# Split the data
-train_reviews, val_reviews, train_sentiments, val_sentiments = train_test_split(padded_reviews, sentiments,
-                                                                                test_size=0.2, random_state=42)
+y_pred = clf.predict(X_test_vec)
+cm = confusion_matrix(y_test, y_pred)
 
-import torch.nn as nn
+plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+plt.title('Confusion Matrix')
+plt.colorbar()
+tick_marks = np.arange(len(set(labels)))
+plt.xticks(tick_marks, set(labels), rotation=45)
+plt.yticks(tick_marks, set(labels))
+
+thresh = cm.max() / 2.
+for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+    plt.text(j, i, cm[i, j],
+             horizontalalignment="center",
+             color="white" if cm[i, j] > thresh else "black")
+
+plt.tight_layout()
+plt.ylabel('True label')
+plt.xlabel('Predicted label')
+plt.show()
 
 
-class SentimentModel(nn.Module):
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim):
-        super(SentimentModel, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, embedding_dim)
-        self.lstm = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
-        self.fc = nn.Linear(hidden_dim, output_dim)
-
-    def forward(self, text):
-        embedded = self.embedding(text)
-        _, (hidden, _) = self.lstm(embedded)
-        output = self.fc(hidden[-1])
-        return output
 
 
-# Hyperparameters
-VOCAB_SIZE = len(vocab)
-EMBEDDING_DIM = 100
-HIDDEN_DIM = 256
-OUTPUT_DIM = 1
-LEARNING_RATE = 0.001
-
-assert all(
-    [all([idx < VOCAB_SIZE for idx in review]) for review in numericalized_reviews]), "Found an out-of-vocab index."
-# Initialize the model
-model = SentimentModel(VOCAB_SIZE, EMBEDDING_DIM, HIDDEN_DIM, OUTPUT_DIM)
-
-# Define the loss function and the optimizer
-criterion = nn.BCEWithLogitsLoss()  # Binary cross-entropy with logits
-optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-
-# Training parameters
-EPOCHS = 5
-BATCH_SIZE = 64
-
-# Convert data to tensor format
-train_reviews_tensor = torch.stack(list(train_reviews))
-train_sentiments_tensor = torch.tensor(train_sentiments, dtype=torch.float32).view(-1, 1)
-val_reviews_tensor = torch.stack(list(val_reviews))
-val_sentiments_tensor = torch.tensor(val_sentiments, dtype=torch.float32).view(-1, 1)
-
-# Training loop
-for epoch in range(EPOCHS):
-    for i in range(0, len(train_reviews), BATCH_SIZE):
-        batch_reviews = train_reviews_tensor[i:i + BATCH_SIZE]
-        batch_sentiments = train_sentiments_tensor[i:i + BATCH_SIZE]
-
-        # Zero the gradients
-        optimizer.zero_grad()
-
-        # Forward pass
-        outputs = model(batch_reviews)
-        loss = criterion(outputs, batch_sentiments)
-
-        # Backward pass and optimization
-        loss.backward()
-        optimizer.step()
-
-    # Print loss for every epoch
-    print(f"Epoch {epoch + 1}/{EPOCHS}, Loss: {loss.item():.4f}")
-
-with torch.no_grad():
-    val_outputs = model(val_reviews_tensor)
-    val_loss = criterion(val_outputs, val_sentiments_tensor)
-    val_predictions = torch.round(torch.sigmoid(val_outputs))
-    accuracy = (val_predictions == val_sentiments_tensor).sum().float() / len(val_sentiments)
-
-print(f"Validation Loss: {val_loss:.4f}")
-print(f"Validation Accuracy: {accuracy:.4f}")
-
+# For classifying a new review:
+def analyze_comment(comment):
+    new_review = vectorizer.transform([comment])
+    prediction = clf.predict(new_review)
+    return prediction[0]
