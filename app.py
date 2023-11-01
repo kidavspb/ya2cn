@@ -35,7 +35,7 @@ def analyze():
     data = request.json
     comment = data['comment']
     result = analyze_comment(comment)
-    if result == 'Positive':
+    if result[0] == 'Positive':
         global positive_comments
         positive_comments += 1
     else:

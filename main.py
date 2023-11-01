@@ -76,4 +76,5 @@ plt.show()
 def analyze_comment(comment):
     new_review = vectorizer.transform([comment])
     prediction = clf.predict(new_review)
-    return prediction[0]
+    prob = clf.predict_proba(new_review)[0]
+    return prediction[0], prob.max()
