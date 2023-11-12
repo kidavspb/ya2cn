@@ -24,7 +24,7 @@ function submitComment() {
         .then(data => {
             const commentDiv = document.createElement('div');
             commentDiv.className = 'comment';
-            commentDiv.textContent = (data.result == "Positive" ? "😃" : "😔") + " " + commentInput.value.trim();
+            commentDiv.textContent = (data.result[0] == "Positive" ? "😃" : "😔") + "("+ Math.round(data.result[1]*10)/10 +")" + " " + commentInput.value.trim();
             commentsHistory.prepend(commentDiv);
             commentInput.value = "";
 
